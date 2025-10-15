@@ -1,2 +1,5 @@
 data/
 uv.lock
+lib/__pycache__/
+cli/__pycache__/
+cache/
