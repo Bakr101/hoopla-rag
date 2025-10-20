@@ -1,11 +1,11 @@
 import string
-from .search_utils import (DEFAULT_SEARCH_LIMIT, load_movies, load_stopwords, CACHE_PATH)
+from lib.search_utils import (DEFAULT_SEARCH_LIMIT, load_movies, load_stopwords, CACHE_PATH, BM25_K1)
 from nltk.stem import PorterStemmer
 from collections import (defaultdict, Counter)
-from lib.search_utils import (load_movies, CACHE_PATH)
 import pickle
 import os
 import sys
+import math
 
 def search_command(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[dict]:
     inverted_index = InvertedIndex()
@@ -34,6 +34,31 @@ def search_command(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[dict]:
         
     return results
     
+
+def preprocess_text(text: str) -> str:
+    text = text.lower()
+    text = text.translate(str.maketrans("", "", string.punctuation))
+    return text
+
+
+def tokenize_text(text: str) -> list[str]:
+    text = preprocess_text(text)
+    tokens = text.split()
+    valid_tokens = []
+    for token in tokens:
+        if token:
+            valid_tokens.append(token)
+    stopwords = load_stopwords()
+    filtered_words = []
+    for word in valid_tokens:
+        if word not in stopwords:
+            filtered_words.append(word)
+    stemmer = PorterStemmer()
+    stemmed_words = []
+    for word in filtered_words:
+        stemmed_words.append(stemmer.stem(word))
+    return stemmed_words
+
 def tf_command(doc_id: int, term: str) -> int:
     inverted_index = InvertedIndex()
     try:
@@ -43,37 +68,41 @@ def tf_command(doc_id: int, term: str) -> int:
         sys.exit(1)
     return inverted_index.get_tf(doc_id, term)
 
-def preprocess_text(text: str) -> list[str]:
-    text = text.lower()
-    punctuation_translation = str.maketrans('', '', string.punctuation)
-    text = text.translate(punctuation_translation)
-    words = text.split(' ')
-    stopwords = load_stopwords()
-    for word in words:
-        if word == ' ':
-            words.remove(word)
-        if word in stopwords:
-            words.remove(word)
-    return words
+def idf_command(term: str) -> float:
+    inverted_index = InvertedIndex()
+    try:
+        inverted_index.load()
+    except FileNotFoundError:
+        print(f"Index and docmap files not found in {CACHE_PATH}")
+        sys.exit(1)
+    return inverted_index.get_idf(term)
 
-def has_matching_token(query_tokens: list[str], title_tokens: list[str]) -> bool:
-    for query_token in query_tokens:
-        for title_token in title_tokens:
-            if query_token in title_token:
-                return True
-    return False
+def bm25_idf_command(term: str) -> float:
+    inverted_index = InvertedIndex()
+    try:
+        inverted_index.load()
+    except FileNotFoundError:
+        print(f"Index and docmap files not found in {CACHE_PATH}")
+        sys.exit(1)
+    return inverted_index.get_bm25_idf(term)
 
-def tokenize_text(text: str) -> list[str]:
-    tokens = preprocess_text(text)
-    stemmer = PorterStemmer()
-    valid_tokens = []
-    for token in tokens:
-        if token:
-            valid_tokens.append(token)
-    stemmed_tokens = []
-    for token in valid_tokens:
-        stemmed_tokens.append(stemmer.stem(token))
-    return stemmed_tokens
+def bm25_tf_command(doc_id: int, term: str, k1: float = BM25_K1) -> float:
+    inverted_index = InvertedIndex()
+    try:
+        inverted_index.load()
+    except FileNotFoundError:
+        print(f"Index and docmap files not found in {CACHE_PATH}")
+        sys.exit(1)
+    return inverted_index.get_bm25_tf(doc_id, term, k1)
+
+def tfidf_command(doc_id: int, term: str) -> float:
+    inverted_index = InvertedIndex()
+    try:
+        inverted_index.load()
+    except FileNotFoundError:
+        print(f"Index and docmap files not found in {CACHE_PATH}")
+        sys.exit(1)
+    return inverted_index.get_tf_idf(doc_id, term)
 
 
 
@@ -81,39 +110,21 @@ class InvertedIndex:
     
     def __init__(self):
         self.index = defaultdict(set) #term (str) -> list of doc_ids[int]
-        self.docmap = {} #doc_id (int) -> {id: int, title: str, description: str}
-        self.term_frequncies = {} # doc_id (int) -> counter objects (term (str) -> frequency (int))
+        self.docmap: dict[int, dict] = {} #doc_id (int) -> {id: int, title: str, description: str}
+        self.term_frequncies = defaultdict(Counter) # doc_id (int) -> counter objects (term (str) -> frequency (int))
+        
         self.index_path = os.path.join(CACHE_PATH, "index.pkl")
         self.docmap_path = os.path.join(CACHE_PATH, "docmap.pkl")
         self.term_frequncies_path = os.path.join(CACHE_PATH, "term_frequncies.pkl")
-    def __add_document(self, doc_id: int, text: str) -> None: 
-        tokens = tokenize_text(text)
-        for token in set(tokens):
-            self.index[token].add(doc_id)
-        self.term_frequncies[doc_id] = Counter(tokens)
 
-    def get_documents(self, term: str) -> list[int]: #get the set of documents for a given token, and return them as a list, sorted in ascending order by document ID.
-        token = term.lower()
-        doc_ids = self.index.get(token, set())
-        return sorted(list(doc_ids))
-    
-    def get_tf(self, doc_id: int, term: str) -> int:
-        tokenized_term = tokenize_text(term)
-        if len(tokenized_term) == 0:
-            return 0 
-        if len(tokenized_term) > 1: 
-            raise ValueError("Term has multiple tokens")
-        return self.term_frequncies[doc_id][tokenized_term[0]]
-    
-    
     def build(self) -> None: #It should iterate over all the movies and add them to both the index and the docmap.
         movies = load_movies()
         for movie in movies:
             doc_id = movie["id"]
             doc_description = f"{movie['title']} {movie['description']}"
-            self.__add_document(doc_id, doc_description)
             self.docmap[doc_id] = movie
-        
+            self.__add_document(doc_id, doc_description)
+
     def save(self) -> None: #It should save the index and the docmap to a file.
         #create a folder called cache
         os.makedirs(CACHE_PATH, exist_ok=True)
@@ -124,7 +135,7 @@ class InvertedIndex:
         with open(self.term_frequncies_path, "wb") as f:
             pickle.dump(self.term_frequncies, f)
         print(f"Index and docmap saved to {CACHE_PATH}")
-    
+
     def load(self) -> None:
         if not os.path.exists(self.index_path) or not os.path.exists(self.docmap_path):
             raise FileNotFoundError(f"Index and docmap files not found in {CACHE_PATH}")
@@ -134,6 +145,61 @@ class InvertedIndex:
             self.docmap = pickle.load(f)
         with open(self.term_frequncies_path, "rb") as f:
             self.term_frequncies = pickle.load(f)
+
+    def get_documents(self, term: str) -> list[int]: #get the set of documents for a given token, and return them as a list, sorted in ascending order by document ID.
+        tokens = tokenize_text(term)
+        if len(tokens) != 1:
+            raise ValueError("Term has multiple tokens")
+        token = tokens[0]
+        doc_ids = self.index.get(token, set())
+        return sorted(list(doc_ids))
+    
+    def __add_document(self, doc_id: int, text: str) -> None: 
+        tokens = tokenize_text(text)
+        for token in set(tokens):
+            self.index[token].add(doc_id)
+        self.term_frequncies[doc_id].update(tokens)
+
+    def get_tf(self, doc_id: int, term: str) -> int:
+        tokens = tokenize_text(term)
+        if len(tokens) != 1:
+            raise ValueError("Term has multiple tokens")
+        token = tokens[0]
+        return self.term_frequncies[doc_id][token]
+    
+    def get_idf(self, term: str) -> float:
+        tokens = tokenize_text(term)
+        if len(tokens) != 1:
+            raise ValueError("Term has multiple tokens")
+        token = tokens[0]
+        doc_count = len(self.docmap)
+        term_count =len(self.index[token])
+        return math.log((doc_count + 1) / (term_count + 1))
+    
+    def get_bm25_idf(self, term: str) -> float:
+        tokens = tokenize_text(term)
+        if len(tokens) != 1:
+            raise ValueError("Term has multiple tokens")
+        token = tokens[0]
+        doc_count = len(self.docmap)
+        term_count = len(self.index[token])
+        return math.log((doc_count - term_count + 0.5) / (term_count + 0.5) + 1)
+    
+    def get_bm25_tf(self, doc_id: int, term:str, k1: float = BM25_K1) -> float:
+        tokens = tokenize_text(term)
+        if len(tokens) != 1:
+            raise ValueError("Term has multiple tokens")
+        token = tokens[0]
+        tf = self.get_tf(doc_id, token)
+        bm25_tf_saturation = (tf * (k1 + 1)) / (tf + k1)
+        return bm25_tf_saturation
+
+    def get_tf_idf(self, doc_id: int, term: str) -> float:
+        tf = self.get_tf(doc_id, term)
+        idf = self.get_idf(term)
+        return tf * idf
+        
+    
 
 
 def build_command() -> None:
