@@ -1,6 +1,6 @@
 import json
 from sentence_transformers import SentenceTransformer
-from lib.search_utils import (load_movies, CACHE_PATH)
+from lib.search_utils import (format_search_result, load_movies, CACHE_PATH)
 import numpy as np
 import os
 import re
@@ -110,8 +110,29 @@ class ChunkedSemanticSearch(SemanticSearch):
             return self.chunk_embeddings
         else:
             return self.build_chunk_embeddings(documents)
-
-
+    
+    def search_chunks(self, query: str, limit: int=10):
+        query_embedding = self.model.encode([query])
+        chunk_scores: list[dict] = []
+        for i, chunk_embedding in enumerate(self.chunk_embeddings):
+            score = cosine_similarity(query_embedding, chunk_embedding)
+            chunk_scores.append({
+                "score": score,
+                "chunk_idx": i,
+                "movie_idx": self.chunk_metadata[i]["movie_idx"],
+            })
+        m_scores = {}
+        for score in chunk_scores:
+            if score["movie_idx"] not in m_scores or score["score"] > m_scores[score["movie_idx"]]:
+                m_scores[score["movie_idx"]] = score["score"]
+        m_scores = sorted(m_scores.items(), key=lambda x: x[1], reverse=True)[:limit]
+        results = []
+        for m in m_scores:
+            m_idx = m[0]
+            m_score = m[1][0]
+            print(f"Movie ID: {m_idx}, Score: {m_score}")
+            results.append(format_search_result(doc_id=m_idx, title=self.documents_map[m_idx]["title"], document=self.documents_map[m_idx]["description"], score=m_score))
+        return results
 
 
 
@@ -171,7 +192,17 @@ def chunk(text: str, chunk_size: int = 200, overlap: int = 0):
     return chunks
 
 def semantic_chunk(text: str, chunk_size: int = 4, overlap: int = 0):
+    text = text.strip()
+    if not text:
+        return []
     sentences = re.split(r"(?<=[.!?])\s+", text)
+    if len(sentences) == 1 and (sentences[0].endswith(".") or sentences[0].endswith("!") or sentences[0].endswith("?")):
+        sentences = [text]
+    else:
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if sentence == "":
+                sentences.remove(sentence)
     chunks = []
     for i in range(0, len(sentences) - overlap, chunk_size - overlap):
         if overlap > 0 and len(chunks) > 0:
@@ -191,6 +222,15 @@ def semantic_chunk_text(text: str, chunk_size: int = 4, overlap: int = 0):
         print(f"{i + 1}. {chunks[i]}")
     return chunks
 
+def search_chunks(query: str, limit: int = 5):
+    chunked_semantic_search = ChunkedSemanticSearch()
+    movies = load_movies()
+    chunked_semantic_search.load_or_create_chunk_embeddings(movies)
+    results = chunked_semantic_search.search_chunks(query, limit)
+    for index, result in enumerate(results, 0):
+        print(f"{index + 1}. {result['title']} ({result['score']:0.4f})")
+        description = result["document"][:100]
+        print(f"    {description}...")
 
 def cosine_similarity(vec1, vec2):
     dot_product = np.dot(vec1, vec2)
