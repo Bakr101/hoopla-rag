@@ -6,8 +6,8 @@ import os
 import re
 
 class SemanticSearch:
-    def __init__(self):
-        self.model = SentenceTransformer("all-MiniLM-L6-v2")
+    def __init__(self, model_name = "all-MiniLM-L6-v2"):
+        self.model = SentenceTransformer(model_name)
         self.embeddings = None
         self.documents = None
         self.documents_map = {}
@@ -65,8 +65,7 @@ class SemanticSearch:
 
 class ChunkedSemanticSearch(SemanticSearch):
     def __init__(self, model_name = "all-MiniLM-L6-v2") -> None:
-        super().__init__()
-        self.model = SentenceTransformer(model_name)
+        super().__init__(model_name)
         self.chunk_embeddings = None
         self.chunk_metadata = None
 
@@ -100,38 +99,58 @@ class ChunkedSemanticSearch(SemanticSearch):
         return self.chunk_embeddings
 
     def load_or_create_chunk_embeddings(self, documents: list[dict]) -> np.ndarray:
-        self.documents = documents
+        self.documents_map = {}
         for doc in documents:
             self.documents_map[doc["id"]] = doc
+        self.documents = documents
+
         if os.path.exists(self.chunk_embeddings_path) and os.path.exists(self.chunk_metadata_path):
             self.chunk_embeddings = np.load(self.chunk_embeddings_path)
             with open(self.chunk_metadata_path, "r") as f:
                 self.chunk_metadata = json.load(f)["chunks"]
             return self.chunk_embeddings
-        else:
-            return self.build_chunk_embeddings(documents)
+        
+        return self.build_chunk_embeddings(documents)
+
     
-    def search_chunks(self, query: str, limit: int=10):
-        query_embedding = self.model.encode([query])
-        chunk_scores: list[dict] = []
+    def search_chunks(self, query: str, limit: int=10) -> list[dict]:
+        if self.chunk_embeddings is None or self.chunk_metadata is None:
+            raise ValueError(
+                "No chunk embeddings loaded. Call load_or_create_chunk_embeddings first."
+            )
+
+        query_embedding =  self.generate_embedding(query)
+
+        chunk_scores = []
         for i, chunk_embedding in enumerate(self.chunk_embeddings):
             score = cosine_similarity(query_embedding, chunk_embedding)
             chunk_scores.append({
-                "score": score,
                 "chunk_idx": i,
                 "movie_idx": self.chunk_metadata[i]["movie_idx"],
+                "score": score,
             })
+
         m_scores = {}
-        for score in chunk_scores:
-            if score["movie_idx"] not in m_scores or score["score"] > m_scores[score["movie_idx"]]:
-                m_scores[score["movie_idx"]] = score["score"]
-        m_scores = sorted(m_scores.items(), key=lambda x: x[1], reverse=True)[:limit]
+        for chunk_score in chunk_scores:
+            movie_idx = chunk_score["movie_idx"]
+            if movie_idx not in m_scores or chunk_score["score"] > m_scores[movie_idx]:
+                m_scores[movie_idx] = chunk_score["score"]
+        
+        sorted_movies = sorted(m_scores.items(), key=lambda x: x[1], reverse=True)
         results = []
-        for m in m_scores:
-            m_idx = m[0]
-            m_score = m[1][0]
-            print(f"Movie ID: {m_idx}, Score: {m_score}")
-            results.append(format_search_result(doc_id=m_idx, title=self.documents_map[m_idx]["title"], document=self.documents_map[m_idx]["description"], score=m_score))
+        print(f"limit: {limit}, sorted_movies: {len(sorted_movies)}, sorted_movies_with_limit: {len(sorted_movies[:limit])}")
+        for movie_idx, score in sorted_movies[:limit]:
+            # print(f"Movie ID: {movie_idx}, Score: {score}")
+            doc = self.documents_map[movie_idx]
+            results.append(
+                format_search_result(
+                    doc_id=doc["id"],
+                    title=doc["title"],
+                    document=doc["description"][:100],
+                    score=score
+                    )
+                )
+
         return results
 
 

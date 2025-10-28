@@ -2,6 +2,7 @@ import json
 import os
 from typing import Any
 
+DEFAULT_ALPHA = 0.5
 DEFAULT_SEARCH_LIMIT = 5
 SCORE_PRECISION = 3
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
@@ -36,7 +37,7 @@ def format_search_result(
         Dictionary representation of search result
     """
     return {
-        "id": doc_id,
+        "doc_id": doc_id,
         "title": title,
         "document": document,
         "score": round(score, SCORE_PRECISION),

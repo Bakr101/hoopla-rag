@@ -1,5 +1,5 @@
 import string
-from lib.search_utils import (DEFAULT_SEARCH_LIMIT, load_movies, load_stopwords, CACHE_PATH, BM25_K1, BM25_B)
+from lib.search_utils import (DEFAULT_SEARCH_LIMIT, load_movies, load_stopwords, CACHE_PATH, BM25_K1, BM25_B, format_search_result)
 from nltk.stem import PorterStemmer
 from collections import (defaultdict, Counter)
 import pickle
@@ -237,7 +237,15 @@ class InvertedIndex:
         sorted_scores = sorted_scores[:limit]
         results = []
         for doc_id, score in sorted_scores:
-            results.append({"id": doc_id, "score": score, "title": self.docmap[doc_id]["title"]})
+            doc = self.docmap[doc_id]
+            results.append(
+                format_search_result(
+                    doc_id=doc["id"],
+                    title=doc["title"],
+                    document=doc["description"][:100],
+                    score=score
+                    )
+                )
         return results
 
     def get_tf_idf(self, doc_id: int, term: str) -> float:
