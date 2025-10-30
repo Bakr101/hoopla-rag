@@ -4,3 +4,4 @@ cli/lib/__pycache__/*
 cli/lib/__pycache__/
 cli/__pycache__/*
 cache/
+.env

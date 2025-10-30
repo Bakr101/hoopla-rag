@@ -2,7 +2,8 @@ import os
 
 from .keyword_search import InvertedIndex
 from .semantic_search import ChunkedSemanticSearch
-from .search_utils import (load_movies, DEFAULT_ALPHA, format_search_result)
+from .search_utils import (load_movies, DEFAULT_ALPHA, format_search_result, load_llm_client, GEMINI_FLASH_MODEL)
+from .query_enhancment import (enhance_query, llm_rerank)
 
 
 class HybridSearch:
@@ -28,8 +29,39 @@ class HybridSearch:
         return combined_results[:limit]
 
 
-    def rrf_search(self, query, k, limit=10):
-        raise NotImplementedError("RRF hybrid search is not implemented yet.")
+    def rrf_search(self, query, k=60, limit=5):
+        bm25_results = self._bm25_search(query, limit * 500)
+        semantic_results = self.semantic_search.search_chunks(query, limit * 500)
+        doc_id_to_scores = {}
+        for idx, result in enumerate(bm25_results):
+            doc_id = result["doc_id"] - 1
+            doc = self.documents[doc_id]
+            doc_id_to_scores[doc_id] = {
+                "bm25_rank": idx + 1,
+                "semantic_rank": None,
+                "doc": doc,
+            }
+        for idx, result in enumerate(semantic_results):
+            doc_id = result["doc_id"] - 1
+            doc = self.documents[doc_id]
+            if doc_id not in doc_id_to_scores:
+                doc_id_to_scores[doc_id] = {
+                    "semantic_rank": idx + 1,
+                    "bm25_rank": None,
+                    "doc": doc,
+                }
+            else:
+                doc_id_to_scores[doc_id]["semantic_rank"] = idx + 1
+        for doc_id, data in doc_id_to_scores.items():
+            if data["bm25_rank"] is not None and data["semantic_rank"] is not None:
+                data["rrf_score"] = rrf_score(data["bm25_rank"], k) + rrf_score(data["semantic_rank"], k)
+            elif data["bm25_rank"] is not None:
+                data["rrf_score"] = rrf_score(data["bm25_rank"], k)
+            elif data["semantic_rank"] is not None:
+                data["rrf_score"] = rrf_score(data["semantic_rank"], k)
+
+        sorted_results = sorted(doc_id_to_scores.items(), key=lambda x: x[1]["rrf_score"], reverse=True)
+        return sorted_results[:limit]
 
 
 def normalize(scores: list[float]) -> list[float]:
@@ -61,7 +93,7 @@ def normalize_search_results(results: list[dict]) -> list[dict]:
 def hybrid_score(bm25_score, semantic_score, alpha=DEFAULT_ALPHA):
     return alpha * bm25_score + (1 - alpha) * semantic_score
 
-def combine_search_results(bm25_results: list[dict], semantic_results: list[dict], alpha: float= DEFAULT_ALPHA) -> list[dict]:
+def combine_search_results(bm25_results: list[dict], semantic_results: list[dict], alpha: float= DEFAULT_ALPHA):
     bm25_normalized = normalize_search_results(bm25_results)
     semantic_normalized = normalize_search_results(semantic_results)
 
@@ -104,6 +136,12 @@ def combine_search_results(bm25_results: list[dict], semantic_results: list[dict
         hybrid_results.append(result)
     return sorted(hybrid_results, key=lambda x: x["score"], reverse=True)
 
+def rrf_score(rank: int, k: int=60) -> float:
+    return 1 / (k + rank)
+
+
+    
+
 def weighted_search(query, alpha, limit=5):
     movies = load_movies()
     hybrid_search = HybridSearch(movies)
@@ -115,3 +153,28 @@ def weighted_search(query, alpha, limit=5):
         "limit": limit,
         "results": results,
     }
+
+def rrf_search(query, k=60, limit=5, method=None, rerank_method=None):
+    movies = load_movies()
+    original_query = query
+    enhanced_query = None
+    if rerank_method:
+        new_limit = limit * 5
+    if method:
+        enhanced_query = enhance_query(query, method)
+        query = enhanced_query
+    hybrid_search = HybridSearch(movies)
+    results = hybrid_search.rrf_search(query, k, new_limit)[:limit]
+    if rerank_method:
+        results = llm_rerank(query, results, rerank_method)
+    results = results[:limit]
+    return {
+        "query": query,
+        "k": k,
+        "limit": limit,
+        "original_query": original_query,
+        "enhanced_query": enhanced_query,
+        "enhance_method": method,
+        "results": results,
+    }
+

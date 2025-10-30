@@ -1,7 +1,12 @@
 import json
 import os
 from typing import Any
+from google import genai
 
+
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+GEMINI_FLASH_MODEL = "gemini-2.5-flash"
 DEFAULT_ALPHA = 0.5
 DEFAULT_SEARCH_LIMIT = 5
 SCORE_PRECISION = 3
@@ -43,3 +48,6 @@ def format_search_result(
         "score": round(score, SCORE_PRECISION),
         "metadata": metadata if metadata else {},
     }
+
+def load_llm_client():
+    return genai.Client(api_key=GEMINI_API_KEY)
