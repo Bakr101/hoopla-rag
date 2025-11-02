@@ -1,6 +1,7 @@
 from typing import Optional
 from .search_utils import (load_llm_client, GEMINI_FLASH_MODEL)
 from dotenv import load_dotenv
+from sentence_transformers import CrossEncoder
 import time
 import json
 import re
@@ -170,12 +171,62 @@ Return ONLY the IDs in order of relevance (best match first). Return a valid JSO
 
     return ordered_results
     
+def cross_encoder_rerank(query, results):
+    docs = [result[1]["doc"] for result in results]
+    pairs: list[list[str]] = []
+    for doc in docs:
+        pairs.append([query, f"{doc['title']} - {doc['description']}"])
+    cross_encoder = CrossEncoder("cross-encoder/ms-marco-TinyBERT-L2-v2")
+    scores = cross_encoder.predict(pairs)
+    print(scores)
+    for i, score in enumerate(scores):
+        results[i][1]["rerank_score"] = score
+    sorted_results = sorted(results, key=lambda x: x[1]["rerank_score"], reverse=True)
+    return sorted_results
+    
 def llm_rerank(query, results, rerank_method):
     match rerank_method:
         case "individual":
             return individual_rerank(query, results)
         case "batch":
             return batch_rerank(query, results)
+        case "cross_encoder":
+            return cross_encoder_rerank(query, results)
         case _:
             return results
 
+def evaluate(query, results):
+    load_dotenv()
+    client = load_llm_client()
+    results_text = []
+    for i, res in enumerate(results, 1):
+        results_text.append(f"{i}. {res.get('title', 'Unknown')} - {res.get('document', '')[:200]}")
+    
+    prompt = f"""Rate how relevant each result is to this query on a 0-3 scale:
+
+Query: "{query}"
+
+Results:
+{chr(10).join(results_text)}
+
+Scale:
+- 3: Highly relevant
+- 2: Relevant
+- 1: Marginally relevant
+- 0: Not relevant
+
+Do NOT give any numbers out than 0, 1, 2, or 3.
+
+Return ONLY the scores in the same order you were given the documents. Return a valid JSON list, nothing else. For example:
+
+[2, 0, 3, 2, 0, 1]"""
+
+    generated_content = client.models.generate_content(
+        model=GEMINI_FLASH_MODEL,
+        contents=prompt
+    )
+    raw = (generated_content.text or "").strip()
+    print(raw)
+    if not raw:
+        raise ValueError("LLM returned empty response for evaluation")
+    return json.loads(raw)

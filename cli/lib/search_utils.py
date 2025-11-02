@@ -12,6 +12,7 @@ DEFAULT_SEARCH_LIMIT = 5
 SCORE_PRECISION = 3
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 DATA_PATH_MOVIES = os.path.join(PROJECT_ROOT, "data", "movies.json")
+DATA_PATH_GOLDEN_DATASET = os.path.join(PROJECT_ROOT, "data", "golden_dataset.json")
 DATA_PATH_STOPWORDS = os.path.join(PROJECT_ROOT, "data", "stopwords.txt")
 CACHE_PATH = os.path.join(PROJECT_ROOT, "cache")
 BM25_K1 = 1.5
@@ -25,6 +26,11 @@ def load_movies() -> list[dict]:
 def load_stopwords() -> list[str]:
     with open(DATA_PATH_STOPWORDS, 'r') as f:
         return f.read().splitlines()
+
+def load_golden_dataset() -> list[dict]:
+    with open(DATA_PATH_GOLDEN_DATASET, 'r') as f:
+        data = json.load(f)
+    return data
 
 def format_search_result(
     doc_id: int, title: str, document: str, score: float, **metadata: Any
