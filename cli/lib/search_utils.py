@@ -57,3 +57,11 @@ def format_search_result(
 
 def load_llm_client():
     return genai.Client(api_key=GEMINI_API_KEY)
+
+def generate_content(prompt):
+    client = load_llm_client()
+    generated_content = client.models.generate_content(
+        model=GEMINI_FLASH_MODEL,
+        contents=prompt
+    )
+    return generated_content.text

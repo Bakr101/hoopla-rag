@@ -200,7 +200,7 @@ def evaluate(query, results):
     client = load_llm_client()
     results_text = []
     for i, res in enumerate(results, 1):
-        results_text.append(f"{i}. {res.get('title', 'Unknown')} - {res.get('document', '')[:200]}")
+        results_text.append(f"{i}. {res["title"]}")
     
     prompt = f"""Rate how relevant each result is to this query on a 0-3 scale:
 
