@@ -2,6 +2,8 @@ import argparse
 from dotenv import load_dotenv
 from lib.hybrid_search import rrf_search
 from lib.search_utils import generate_content
+
+
 def main():
     parser = argparse.ArgumentParser(description="Retrieval Augmented Generation CLI")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -10,22 +12,36 @@ def main():
         "rag", help="Perform RAG (search + generate answer)"
     )
     rag_parser.add_argument("query", type=str, help="Search query for RAG")
-    summarize_parser = subparsers.add_parser(
-        "summarize", help="Summarize a document"
+    summarize_parser = subparsers.add_parser("summarize", help="Summarize a document")
+    summarize_parser.add_argument(
+        "query", type=str, help="Query to search and summarize"
     )
-    summarize_parser.add_argument("query", type=str, help="Query to search and summarize")
-    summarize_parser.add_argument("limit", type=int, help="Limit the number of results", default=5, nargs="?")
+    summarize_parser.add_argument(
+        "limit", type=int, help="Limit the number of results", default=5, nargs="?"
+    )
     citation_parser = subparsers.add_parser(
-        "citations", help="LLM answer after performing search with citation from the documents provided to it"
+        "citations",
+        help="LLM answer after performing search with citation from the documents provided to it",
     )
-    citation_parser.add_argument("query", type=str, help="Query to search and provide a citation")
-    citation_parser.add_argument("limit", type=int, help="Limit the number of results", default=5, nargs="?")
+    citation_parser.add_argument(
+        "query", type=str, help="Query to search and provide a citation"
+    )
+    citation_parser.add_argument(
+        "limit", type=int, help="Limit the number of results", default=5, nargs="?"
+    )
 
     question_parser = subparsers.add_parser(
-        "question", help="LLM answer after performing search with answer to the user's question from the documents provided to it"
+        "question",
+        help="LLM answer after performing search with answer to the user's question from the documents provided to it",
     )
-    question_parser.add_argument("query", type=str, help="Query to search and provide an answer to the user's question")
-    question_parser.add_argument("limit", type=int, help="Limit the number of results", default=5, nargs="?")
+    question_parser.add_argument(
+        "query",
+        type=str,
+        help="Query to search and provide an answer to the user's question",
+    )
+    question_parser.add_argument(
+        "limit", type=int, help="Limit the number of results", default=5, nargs="?"
+    )
 
     args = parser.parse_args()
 
@@ -38,7 +54,7 @@ def main():
             titles_found = ""
             for result in results:
                 titles_documents.append(f"{result['title']}\n{result['document']}")
-                titles_found += f"- {result["title"]}\n"
+                titles_found += f"- {result['title']}\n"
             titles_documents_text = "\n".join(titles_documents)
             prompt = f"""Answer the question or provide information based on the provided documents. This should be tailored to Hoopla users. Hoopla is a movie streaming service.
 
@@ -64,7 +80,7 @@ Provide a comprehensive answer that addresses the query:"""
             titles_found = ""
             for result in results:
                 titles_documents.append(f"{result['title']}\n{result['document']}")
-                titles_found += f"- {result["title"]}\n"
+                titles_found += f"- {result['title']}\n"
             titles_documents_text = "\n".join(titles_documents)
             prompt = f"""
 Provide information useful to this query by synthesizing information from multiple search results in detail.
@@ -91,7 +107,7 @@ Provide a comprehensive 3–4 sentence answer that combines information from mul
             titles_found = ""
             for result in results:
                 titles_documents.append(f"{result['title']}\n{result['document']}")
-                titles_found += f"- {result["title"]}\n"
+                titles_found += f"- {result['title']}\n"
             titles_documents_text = "\n".join(titles_documents)
             prompt = f"""Answer the question or provide information based on the provided documents.
 
@@ -127,9 +143,9 @@ Answer:"""
             titles_found = ""
             for result in results:
                 titles_documents.append(f"{result['title']}\n{result['document']}")
-                titles_found += f"- {result["title"]}\n"
+                titles_found += f"- {result['title']}\n"
             titles_documents_text = "\n".join(titles_documents)
-            
+
             load_dotenv()
             prompt = f"""Answer the user's question based on the provided movies that are available on Hoopla.
 

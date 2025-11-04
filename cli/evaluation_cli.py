@@ -2,6 +2,8 @@ import argparse
 from lib.search_utils import load_golden_dataset
 from lib.hybrid_search import rrf_search
 from lib.evaluation import evaluate_command
+
+
 def main():
     parser = argparse.ArgumentParser(description="Search Evaluation CLI")
     parser.add_argument(
@@ -38,7 +40,11 @@ def main():
                 relevant_titles.append(result["title"])
         precision = relevant_count / len(results)
         recall = relevant_count / len(relevant_docs)
-        f1_score = 2 * (precision * recall) / (precision + recall) if precision + recall > 0 else 0
+        f1_score = (
+            2 * (precision * recall) / (precision + recall)
+            if precision + recall > 0
+            else 0
+        )
         result = {
             "query": query,
             "precision": precision,
@@ -70,6 +76,6 @@ def main():
         print(f"- Relevant titles: {relevant_titles}")
         print()
 
+
 if __name__ == "__main__":
     main()
-

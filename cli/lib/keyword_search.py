@@ -1,11 +1,20 @@
 import string
-from lib.search_utils import (DEFAULT_SEARCH_LIMIT, load_movies, load_stopwords, CACHE_PATH, BM25_K1, BM25_B, format_search_result)
+from lib.search_utils import (
+    DEFAULT_SEARCH_LIMIT,
+    load_movies,
+    load_stopwords,
+    CACHE_PATH,
+    BM25_K1,
+    BM25_B,
+    format_search_result,
+)
 from nltk.stem import PorterStemmer
-from collections import (defaultdict, Counter)
+from collections import defaultdict, Counter
 import pickle
 import os
 import sys
 import math
+
 
 def search_command(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[dict]:
     inverted_index = InvertedIndex()
@@ -15,7 +24,6 @@ def search_command(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[dict]:
         print(f"Index and docmap files not found in {CACHE_PATH}")
         sys.exit(1)
 
-    
     query_tokens = tokenize_text(query)
     results = []
     doc_ids = set()
@@ -31,9 +39,9 @@ def search_command(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[dict]:
             results.append(doc)
             if len(results) >= limit:
                 break
-        
+
     return results
-    
+
 
 def preprocess_text(text: str) -> str:
     text = text.lower()
@@ -59,6 +67,7 @@ def tokenize_text(text: str) -> list[str]:
         stemmed_words.append(stemmer.stem(word))
     return stemmed_words
 
+
 def tf_command(doc_id: int, term: str) -> int:
     inverted_index = InvertedIndex()
     try:
@@ -67,6 +76,7 @@ def tf_command(doc_id: int, term: str) -> int:
         print(f"Index and docmap files not found in {CACHE_PATH}")
         sys.exit(1)
     return inverted_index.get_tf(doc_id, term)
+
 
 def idf_command(term: str) -> float:
     inverted_index = InvertedIndex()
@@ -77,6 +87,7 @@ def idf_command(term: str) -> float:
         sys.exit(1)
     return inverted_index.get_idf(term)
 
+
 def bm25_idf_command(term: str) -> float:
     inverted_index = InvertedIndex()
     try:
@@ -86,7 +97,10 @@ def bm25_idf_command(term: str) -> float:
         sys.exit(1)
     return inverted_index.get_bm25_idf(term)
 
-def bm25_tf_command(doc_id: int, term: str, k1: float = BM25_K1, b: float = BM25_B) -> float:
+
+def bm25_tf_command(
+    doc_id: int, term: str, k1: float = BM25_K1, b: float = BM25_B
+) -> float:
     inverted_index = InvertedIndex()
     try:
         inverted_index.load()
@@ -94,6 +108,7 @@ def bm25_tf_command(doc_id: int, term: str, k1: float = BM25_K1, b: float = BM25
         print(f"Index and docmap files not found in {CACHE_PATH}")
         sys.exit(1)
     return inverted_index.get_bm25_tf(doc_id, term, k1, b)
+
 
 def bm25search_command(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[dict]:
     inverted_index = InvertedIndex()
@@ -103,6 +118,7 @@ def bm25search_command(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[di
         print(f"Index and docmap files not found in {CACHE_PATH}")
         sys.exit(1)
     return inverted_index.bm25_search(query, limit)
+
 
 def tfidf_command(doc_id: int, term: str) -> float:
     inverted_index = InvertedIndex()
@@ -114,21 +130,25 @@ def tfidf_command(doc_id: int, term: str) -> float:
     return inverted_index.get_tf_idf(doc_id, term)
 
 
-
 class InvertedIndex:
-    
     def __init__(self):
-        self.index = defaultdict(set) #term (str) -> list of doc_ids[int]
-        self.docmap: dict[int, dict] = {} #doc_id (int) -> {id: int, title: str, description: str}
-        self.term_frequncies = defaultdict(Counter) # doc_id (int) -> counter objects (term (str) -> frequency (int))
-        self.doc_lengths={}
+        self.index = defaultdict(set)  # term (str) -> list of doc_ids[int]
+        self.docmap: dict[
+            int, dict
+        ] = {}  # doc_id (int) -> {id: int, title: str, description: str}
+        self.term_frequncies = defaultdict(
+            Counter
+        )  # doc_id (int) -> counter objects (term (str) -> frequency (int))
+        self.doc_lengths = {}
 
         self.index_path = os.path.join(CACHE_PATH, "index.pkl")
         self.docmap_path = os.path.join(CACHE_PATH, "docmap.pkl")
         self.term_frequncies_path = os.path.join(CACHE_PATH, "term_frequncies.pkl")
         self.doc_lengths_path = os.path.join(CACHE_PATH, "doc_lengths.pkl")
 
-    def build(self) -> None: #It should iterate over all the movies and add them to both the index and the docmap.
+    def build(
+        self,
+    ) -> None:  # It should iterate over all the movies and add them to both the index and the docmap.
         movies = load_movies()
         for movie in movies:
             doc_id = movie["id"]
@@ -136,8 +156,8 @@ class InvertedIndex:
             self.docmap[doc_id] = movie
             self.__add_document(doc_id, doc_description)
 
-    def save(self) -> None: #It should save the index and the docmap to a file.
-        #create a folder called cache
+    def save(self) -> None:  # It should save the index and the docmap to a file.
+        # create a folder called cache
         os.makedirs(CACHE_PATH, exist_ok=True)
         with open(self.index_path, "wb") as f:
             pickle.dump(self.index, f)
@@ -161,21 +181,25 @@ class InvertedIndex:
         with open(self.doc_lengths_path, "rb") as f:
             self.doc_lengths = pickle.load(f)
 
-    def get_documents(self, term: str) -> list[int]: #get the set of documents for a given token, and return them as a list, sorted in ascending order by document ID.
+    def get_documents(
+        self, term: str
+    ) -> list[
+        int
+    ]:  # get the set of documents for a given token, and return them as a list, sorted in ascending order by document ID.
         tokens = tokenize_text(term)
         if len(tokens) != 1:
             raise ValueError("Term has multiple tokens")
         token = tokens[0]
         doc_ids = self.index.get(token, set())
         return sorted(list(doc_ids))
-    
-    def __add_document(self, doc_id: int, text: str) -> None: 
+
+    def __add_document(self, doc_id: int, text: str) -> None:
         tokens = tokenize_text(text)
         self.doc_lengths[doc_id] = len(tokens)
         for token in set(tokens):
             self.index[token].add(doc_id)
         self.term_frequncies[doc_id].update(tokens)
-    
+
     def __get_avg_doc_length(self) -> float:
         total_length = sum(self.doc_lengths.values())
         total_docs = len(self.doc_lengths)
@@ -189,16 +213,16 @@ class InvertedIndex:
             raise ValueError("Term has multiple tokens")
         token = tokens[0]
         return self.term_frequncies[doc_id][token]
-    
+
     def get_idf(self, term: str) -> float:
         tokens = tokenize_text(term)
         if len(tokens) != 1:
             raise ValueError("Term has multiple tokens")
         token = tokens[0]
         doc_count = len(self.docmap)
-        term_count =len(self.index[token])
+        term_count = len(self.index[token])
         return math.log((doc_count + 1) / (term_count + 1))
-    
+
     def get_bm25_idf(self, term: str) -> float:
         tokens = tokenize_text(term)
         if len(tokens) != 1:
@@ -207,8 +231,10 @@ class InvertedIndex:
         doc_count = len(self.docmap)
         term_count = len(self.index[token])
         return math.log((doc_count - term_count + 0.5) / (term_count + 0.5) + 1)
-    
-    def get_bm25_tf(self, doc_id: int, term:str, k1: float = BM25_K1, b: float = BM25_B) -> float:
+
+    def get_bm25_tf(
+        self, doc_id: int, term: str, k1: float = BM25_K1, b: float = BM25_B
+    ) -> float:
         tokens = tokenize_text(term)
         if len(tokens) != 1:
             raise ValueError("Term has multiple tokens")
@@ -219,12 +245,12 @@ class InvertedIndex:
         length_norm = 1 - b + b * (doc_length / avg_doc_length)
         bm25_tf_saturation = (tf * (k1 + 1)) / (tf + k1 * length_norm)
         return bm25_tf_saturation
-    
+
     def bm25(self, doc_id: int, term: str):
         bm25_idf = self.get_bm25_idf(term)
         bm25_tf = self.get_bm25_tf(doc_id, term)
         return bm25_idf * bm25_tf
-    
+
     def bm25_search(self, query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[dict]:
         query_tokens = tokenize_text(query)
         scores = defaultdict(float)
@@ -243,22 +269,18 @@ class InvertedIndex:
                     doc_id=doc["id"],
                     title=doc["title"],
                     document=doc["description"],
-                    score=score
-                    )
+                    score=score,
                 )
+            )
         return results
 
     def get_tf_idf(self, doc_id: int, term: str) -> float:
         tf = self.get_tf(doc_id, term)
         idf = self.get_idf(term)
         return tf * idf
-        
-    
 
 
 def build_command() -> None:
     inverted_index = InvertedIndex()
     inverted_index.build()
     inverted_index.save()
-
-            

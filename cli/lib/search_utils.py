@@ -4,7 +4,6 @@ from typing import Any
 from google import genai
 
 
-
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GEMINI_FLASH_MODEL = "gemini-2.5-flash"
 DEFAULT_ALPHA = 0.5
@@ -18,19 +17,23 @@ CACHE_PATH = os.path.join(PROJECT_ROOT, "cache")
 BM25_K1 = 1.5
 BM25_B = 0.75
 
+
 def load_movies() -> list[dict]:
-    with open(DATA_PATH_MOVIES, 'r') as f:
+    with open(DATA_PATH_MOVIES, "r") as f:
         data = json.load(f)
     return data["movies"]
 
+
 def load_stopwords() -> list[str]:
-    with open(DATA_PATH_STOPWORDS, 'r') as f:
+    with open(DATA_PATH_STOPWORDS, "r") as f:
         return f.read().splitlines()
 
+
 def load_golden_dataset() -> list[dict]:
-    with open(DATA_PATH_GOLDEN_DATASET, 'r') as f:
+    with open(DATA_PATH_GOLDEN_DATASET, "r") as f:
         data = json.load(f)
     return data
+
 
 def format_search_result(
     doc_id: int, title: str, document: str, score: float, **metadata: Any
@@ -55,13 +58,14 @@ def format_search_result(
         "metadata": metadata if metadata else {},
     }
 
-def load_llm_client():
+
+def load_llm_client() -> genai.Client:
     return genai.Client(api_key=GEMINI_API_KEY)
+
 
 def generate_content(prompt):
     client = load_llm_client()
     generated_content = client.models.generate_content(
-        model=GEMINI_FLASH_MODEL,
-        contents=prompt
+        model=GEMINI_FLASH_MODEL, contents=prompt
     )
     return generated_content.text

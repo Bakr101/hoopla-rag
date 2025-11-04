@@ -1,14 +1,16 @@
 from typing import Optional
-from .search_utils import (load_llm_client, GEMINI_FLASH_MODEL)
+from .search_utils import load_llm_client, GEMINI_FLASH_MODEL
 from dotenv import load_dotenv
 from sentence_transformers import CrossEncoder
 import time
 import json
 import re
+
+
 def spell_correct(query):
     load_dotenv()
     client = load_llm_client()
-    
+
     content = f"""Fix any spelling errors in this movie search query.
 
 Only correct obvious typos. Don't change correctly spelled words.
@@ -19,17 +21,23 @@ If no errors, return the original query.
 Corrected:"""
 
     generated_content = client.models.generate_content(
-            model=GEMINI_FLASH_MODEL,
-            contents=content
-        )
-        
-    corrected_query = (generated_content.text or "").strip().strip('"').replace('Corrected: ', '').replace('"', '')
+        model=GEMINI_FLASH_MODEL, contents=content
+    )
+
+    corrected_query = (
+        (generated_content.text or "")
+        .strip()
+        .strip('"')
+        .replace("Corrected: ", "")
+        .replace('"', "")
+    )
     return corrected_query if corrected_query else query
+
 
 def rewrite_query(query):
     load_dotenv()
     client = load_llm_client()
-    
+
     prompt = f"""Rewrite this movie search query to be more specific and searchable.
 
 Original: "{query}"
@@ -49,17 +57,22 @@ Examples:
 
 Rewritten query:"""
     generated_content = client.models.generate_content(
-        model=GEMINI_FLASH_MODEL,
-        contents=prompt
+        model=GEMINI_FLASH_MODEL, contents=prompt
     )
-    rewritten_query = (generated_content.text or "").strip().strip('"').replace('Rewritten query: ', '').replace('"', '')
+    rewritten_query = (
+        (generated_content.text or "")
+        .strip()
+        .strip('"')
+        .replace("Rewritten query: ", "")
+        .replace('"', "")
+    )
     return rewritten_query if rewritten_query else query
 
 
 def expand_query(query):
     load_dotenv()
     client = load_llm_client()
-    
+
     prompt = f"""Expand this movie search query with related terms.
 
 Add synonyms and related concepts that might appear in movie descriptions.
@@ -75,13 +88,13 @@ Examples:
 Query: "{query}"
 """
     generated_content = client.models.generate_content(
-        model=GEMINI_FLASH_MODEL,
-        contents=prompt
+        model=GEMINI_FLASH_MODEL, contents=prompt
     )
     expanded_query = (generated_content.text or "").strip().strip('"')
     return expanded_query if expanded_query else query
 
-def enhance_query(query, method: Optional[str]=None):
+
+def enhance_query(query, method: Optional[str] = None):
     match method:
         case "spell":
             return spell_correct(query)
@@ -117,10 +130,15 @@ Give me ONLY the number in your response, no other text or explanation.
 
 Score:"""
         generated_content = client.models.generate_content(
-            model=GEMINI_FLASH_MODEL,
-            contents=prompt
+            model=GEMINI_FLASH_MODEL, contents=prompt
         )
-        score = (generated_content.text or "").strip().strip('"').replace('Score: ', '').replace('"', '')
+        score = (
+            (generated_content.text or "")
+            .strip()
+            .strip('"')
+            .replace("Score: ", "")
+            .replace('"', "")
+        )
         result[1]["rerank_score"] = float(score)
         time.sleep(2)
     sorted_results = sorted(results, key=lambda x: x[1]["rerank_score"], reverse=True)
@@ -130,7 +148,12 @@ Score:"""
 def batch_rerank(query, results):
     load_dotenv()
     client = load_llm_client()
-    doc_list_str = "\n".join([f"id: {result[0]}, title: {result[1]['doc']['title']}, description: {result[1]['doc']['description']}" for i, result in enumerate(results)])
+    doc_list_str = "\n".join(
+        [
+            f"id: {result[0]}, title: {result[1]['doc']['title']}, description: {result[1]['doc']['description']}"
+            for i, result in enumerate(results)
+        ]
+    )
     prompt = f"""Rank these movies by relevance to the search query.
 
 Query: "{query}"
@@ -144,8 +167,7 @@ Return ONLY the IDs in order of relevance (best match first). Return a valid JSO
 """
 
     generated_content = client.models.generate_content(
-        model=GEMINI_FLASH_MODEL,
-        contents=prompt
+        model=GEMINI_FLASH_MODEL, contents=prompt
     )
     raw = (generated_content.text or "").strip()
 
@@ -163,14 +185,17 @@ Return ONLY the IDs in order of relevance (best match first). Return a valid JSO
         raise ValueError(f"Expected JSON list of IDs from LLM, got: {raw[:200]}") from e
 
     reranked_results = {}
-     # Map doc_id -> (doc_id, data)
+    # Map doc_id -> (doc_id, data)
     id_to_result = {doc_id: (doc_id, data) for doc_id, data in results}
 
     # Build ordered list, keeping only those present
-    ordered_results = [id_to_result[doc_id] for doc_id in reranked_ids if doc_id in id_to_result]
+    ordered_results = [
+        id_to_result[doc_id] for doc_id in reranked_ids if doc_id in id_to_result
+    ]
 
     return ordered_results
-    
+
+
 def cross_encoder_rerank(query, results):
     docs = [result[1]["doc"] for result in results]
     pairs: list[list[str]] = []
@@ -183,7 +208,8 @@ def cross_encoder_rerank(query, results):
         results[i][1]["rerank_score"] = score
     sorted_results = sorted(results, key=lambda x: x[1]["rerank_score"], reverse=True)
     return sorted_results
-    
+
+
 def llm_rerank(query, results, rerank_method):
     match rerank_method:
         case "individual":
@@ -195,13 +221,14 @@ def llm_rerank(query, results, rerank_method):
         case _:
             return results
 
+
 def evaluate(query, results):
     load_dotenv()
     client = load_llm_client()
     results_text = []
     for i, res in enumerate(results, 1):
-        results_text.append(f"{i}. {res["title"]}")
-    
+        results_text.append(f"{i}. {res['title']}")
+
     prompt = f"""Rate how relevant each result is to this query on a 0-3 scale:
 
 Query: "{query}"
@@ -222,8 +249,7 @@ Return ONLY the scores in the same order you were given the documents. Return a 
 [2, 0, 3, 2, 0, 1]"""
 
     generated_content = client.models.generate_content(
-        model=GEMINI_FLASH_MODEL,
-        contents=prompt
+        model=GEMINI_FLASH_MODEL, contents=prompt
     )
     raw = (generated_content.text or "").strip()
     print(raw)
